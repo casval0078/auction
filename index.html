@@ -66,6 +66,7 @@ const auth = getAuth(app);
 
 let isAdmin = false;
 
+// 🔴 ログイン確認
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     location.href = "login.html";
@@ -106,13 +107,19 @@ function loadItems() {
           <p>現在価格: ¥${item.currentPrice}</p>
           <p>入札者: ${item.bidder || "なし"}</p>
           <p>単位: ¥${item.bidUnit}</p>
-          <p>残り: ${formatTime(remain)}</p>
+
+          <p>
+            残り:
+            <span id="time-${id}" data-deadline="${item.deadline}">
+              ${formatTime(remain)}
+            </span>
+          </p>
 
           <input id="price-${id}" type="number" class="border w-full mt-2"
             ${disabled ? "disabled" : ""}>
 
-          <button onclick="bid('${id}')"
-            class="bg-blue-500 text-white w-full mt-2"
+          <button id="btn-${id}" onclick="bid('${id}')"
+            class="bg-blue-500 text-white w-full mt-2 disabled:bg-gray-400"
             ${disabled ? "disabled" : ""}>
             入札
           </button>
@@ -133,7 +140,31 @@ function loadItems() {
   });
 }
 
-// 入札処理
+// 🔴 1秒ごと更新
+setInterval(() => {
+  document.querySelectorAll("[data-deadline]").forEach(el => {
+    const deadline = Number(el.dataset.deadline);
+    const remain = deadline - Date.now();
+
+    const id = el.id.replace("time-", "");
+
+    if (remain <= 0) {
+      el.innerText = "終了";
+
+      // 🔴 入力＆ボタン無効化
+      const input = document.getElementById(`price-${id}`);
+      const btn = document.getElementById(`btn-${id}`);
+
+      if (input) input.disabled = true;
+      if (btn) btn.disabled = true;
+
+    } else {
+      el.innerText = formatTime(remain);
+    }
+  });
+}, 1000);
+
+// 入札
 window.bid = async (id) => {
   const input = document.getElementById(`price-${id}`);
   const price = Number(input.value);
@@ -147,13 +178,11 @@ window.bid = async (id) => {
   const snap = await getDoc(ref);
   const item = snap.data();
 
-  // 🔴 条件①：現在価格より高い
   if (price <= item.currentPrice) {
     alert("現在価格より高くしてください");
     return;
   }
 
-  // 🔴 条件②：単位チェック
   if ((price - item.currentPrice) % item.bidUnit !== 0) {
     alert(`${item.bidUnit}円単位で入札してください`);
     return;
@@ -234,7 +263,7 @@ window.logout = async () => {
   location.href = "login.html";
 };
 
-// 時間
+// 時間フォーマット
 function formatTime(ms) {
   if (ms <= 0) return "終了";
 
