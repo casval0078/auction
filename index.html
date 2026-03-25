@@ -55,6 +55,7 @@ import {
   doc,
   updateDoc,
   addDoc,
+  deleteDoc,
   getDoc
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
@@ -64,7 +65,7 @@ import {
   signOut
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-// 🔴 自分のFirebase設定を入れる
+// 🔴 Firebase設定
 const firebaseConfig = {
   apiKey: "AIzaSyDpd9FYMXGdJCBFXXTEHb2JkP6D9F0tp84",
   authDomain: "auction-be4d0.firebaseapp.com",
@@ -79,23 +80,22 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-// ログインチェック
+let isAdmin = false;
+
+// ログインチェック＆ユーザー情報取得
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     location.href = "login.html";
     return;
   }
 
-  // ユーザー情報取得
   const userDoc = await getDoc(doc(db, "users", user.uid));
   const userData = userDoc.data();
 
-  const name = userData.name;
-  const isAdmin = userData.isAdmin;
+  document.getElementById("user").innerText = userData.name;
 
-  document.getElementById("user").innerText = name;
+  isAdmin = userData.isAdmin === true;
 
-  // 管理者なら表示
   if (isAdmin) {
     document.getElementById("adminArea").classList.remove("hidden");
   }
@@ -144,6 +144,13 @@ onSnapshot(collection(db, "items"), (snapshot) => {
         >
           入札
         </button>
+
+        ${isAdmin ? `
+          <button onclick="deleteItem('${id}')"
+            class="w-full bg-red-500 text-white p-2 rounded mt-2">
+            削除
+          </button>
+        ` : ""}
       </div>
     `;
   });
@@ -173,7 +180,7 @@ window.bid = async (id) => {
   alert("入札成功！");
 };
 
-// 商品登録（管理者のみ）
+// 商品登録（管理者）
 window.createItem = async () => {
   const name = document.getElementById("itemName").value;
   const price = Number(document.getElementById("itemPrice").value);
@@ -196,13 +203,22 @@ window.createItem = async () => {
   alert("登録完了");
 };
 
+// 商品削除（管理者）
+window.deleteItem = async (id) => {
+  if (!confirm("本当に削除する？")) return;
+
+  await deleteDoc(doc(db, "items", id));
+
+  alert("削除しました");
+};
+
 // ログアウト
 window.logout = async () => {
   await signOut(auth);
   location.href = "login.html";
 };
 
-// 時間フォーマット
+// 残り時間表示
 function formatTime(ms) {
   if (ms <= 0) return "終了";
 
