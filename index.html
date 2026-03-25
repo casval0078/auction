@@ -11,10 +11,37 @@
 <!-- ヘッダー -->
 <header class="bg-blue-600 text-white p-4 flex justify-between">
   <h1 class="text-xl font-bold">オークション</h1>
-  <div id="user">未ログイン</div>
+
+  <div>
+    <span id="user"></span>
+    <button onclick="logout()" class="ml-4 bg-white text-blue-600 px-2 py-1 rounded">
+      ログアウト
+    </button>
+  </div>
 </header>
 
-<!-- コンテンツ -->
+<!-- 管理者エリア -->
+<div id="adminArea" class="p-4 hidden">
+  <div class="bg-white p-4 rounded-xl shadow mb-4">
+    <h2 class="text-lg font-bold mb-2">商品登録（管理者）</h2>
+
+    <input id="itemName" placeholder="商品名"
+      class="border p-2 w-full mb-2 rounded">
+
+    <input id="itemPrice" type="number" placeholder="初期価格"
+      class="border p-2 w-full mb-2 rounded">
+
+    <input id="deadline" type="datetime-local"
+      class="border p-2 w-full mb-2 rounded">
+
+    <button onclick="createItem()"
+      class="bg-blue-500 text-white w-full p-2 rounded">
+      登録
+    </button>
+  </div>
+</div>
+
+<!-- 商品一覧 -->
 <main class="p-4">
   <div id="items" class="grid md:grid-cols-3 gap-4"></div>
 </main>
@@ -26,38 +53,51 @@ import {
   collection,
   onSnapshot,
   doc,
-  updateDoc
+  updateDoc,
+  addDoc,
+  getDoc
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 import {
   getAuth,
-  signInAnonymously,
-  onAuthStateChanged
+  onAuthStateChanged,
+  signOut
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-// Firebase設定
+// 🔴 自分のFirebase設定を入れる
 const firebaseConfig = {
-  // ←ここに貼る
-  apiKey: "AIzaSyDpd9FYMXGdJCBFXXTEHb2JkP6D9F0tp84",
-  authDomain: "auction-be4d0.firebaseapp.com",
-  projectId: "auction-be4d0",
-  storageBucket: "auction-be4d0.firebasestorage.app",
-  messagingSenderId: "911679639732",
-  appId: "1:911679639732:web:bae509c92e069ce02e47e1",
-  measurementId: "G-5B4GH2LDGQ"
+  apiKey: "ここ",
+  authDomain: "ここ",
+  projectId: "ここ",
 };
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const auth = getAuth();
+const auth = getAuth(app);
 
-// ログイン状態
-onAuthStateChanged(auth, (user) => {
-  document.getElementById("user").innerText =
-    user ? "ログイン中" : "未ログイン";
+// ログインチェック
+onAuthStateChanged(auth, async (user) => {
+  if (!user) {
+    location.href = "login.html";
+    return;
+  }
+
+  // ユーザー情報取得
+  const userDoc = await getDoc(doc(db, "users", user.uid));
+  const userData = userDoc.data();
+
+  const name = userData.name;
+  const isAdmin = userData.isAdmin;
+
+  document.getElementById("user").innerText = name;
+
+  // 管理者なら表示
+  if (isAdmin) {
+    document.getElementById("adminArea").classList.remove("hidden");
+  }
 });
 
-// 商品表示（リアルタイム）
+// 商品リアルタイム表示
 onSnapshot(collection(db, "items"), (snapshot) => {
   const div = document.getElementById("items");
   div.innerHTML = "";
@@ -105,19 +145,57 @@ onSnapshot(collection(db, "items"), (snapshot) => {
   });
 });
 
-// 入札
+// 入札処理
 window.bid = async (id) => {
   const input = document.getElementById(`price-${id}`);
   const price = Number(input.value);
 
-  if (!price) return alert("金額を入力して");
+  if (!price) {
+    alert("金額を入力して");
+    return;
+  }
+
+  const user = auth.currentUser;
+  const userDoc = await getDoc(doc(db, "users", user.uid));
+  const name = userDoc.data().name;
 
   const ref = doc(db, "items", id);
 
   await updateDoc(ref, {
     currentPrice: price,
-    bidder: "ユーザー"
+    bidder: name
   });
+
+  alert("入札成功！");
+};
+
+// 商品登録（管理者のみ）
+window.createItem = async () => {
+  const name = document.getElementById("itemName").value;
+  const price = Number(document.getElementById("itemPrice").value);
+  const deadline = new Date(
+    document.getElementById("deadline").value
+  ).getTime();
+
+  if (!name || !price || !deadline) {
+    alert("全部入力して");
+    return;
+  }
+
+  await addDoc(collection(db, "items"), {
+    name: name,
+    currentPrice: price,
+    bidder: "なし",
+    deadline: deadline
+  });
+
+  alert("登録完了");
+};
+
+// ログアウト
+window.logout = async () => {
+  await signOut(auth);
+  location.href = "login.html";
 };
 
 // 時間フォーマット
