@@ -9,9 +9,9 @@
 
 <body class="bg-gray-100">
 
-<header class="bg-blue-600 text-white p-4 flex justify-between">
+<header class="bg-blue-600 text-white p-4 flex justify-between items-center">
   <div class="text-lg font-bold">オークション</div>
-  <div>
+  <div class="text-sm">
     <span id="user"></span>
     <button onclick="logout()" class="ml-2 bg-white text-blue-600 px-3 py-1 rounded">
       ログアウト
@@ -19,14 +19,45 @@
   </div>
 </header>
 
-<div class="p-4">
+<div class="p-4 max-w-4xl mx-auto">
+
+  <!-- 管理者用 -->
+  <div id="adminArea" class="bg-white p-4 rounded-xl shadow mb-4 hidden">
+    <h2 class="font-bold mb-2">商品登録</h2>
+
+    <input id="itemName" placeholder="商品名"
+      class="border p-2 w-full mb-2 rounded">
+
+    <input id="startPrice" type="number" placeholder="開始価格"
+      class="border p-2 w-full mb-2 rounded">
+
+    <input id="bidUnit" type="number" placeholder="入札単位（例：100）"
+      class="border p-2 w-full mb-2 rounded">
+
+    <input id="minutes" type="number" placeholder="制限時間（分）"
+      class="border p-2 w-full mb-2 rounded">
+
+    <button onclick="createItem()"
+      class="bg-green-500 text-white w-full p-2 rounded">
+      登録
+    </button>
+  </div>
+
+  <!-- 商品一覧 -->
   <div id="items" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
+
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, onSnapshot, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import {
+  getFirestore, collection, addDoc, onSnapshot,
+  doc, updateDoc, deleteDoc, getDoc
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+import {
+  getAuth, onAuthStateChanged, signOut
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDpd9FYMXGdJCBFXXTEHb2JkP6D9F0tp84",
@@ -42,14 +73,26 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-let currentUser;
+let isAdmin = false;
 
-// ログインチェック
-onAuthStateChanged(auth, (user) => {
-  if (!user) location.href = "login.html";
-  currentUser = user;
+// ログイン状態確認
+onAuthStateChanged(auth, async (user) => {
+  if (!user) {
+    location.href = "login.html";
+    return;
+  }
+
+  const userDoc = await getDoc(doc(db, "users", user.uid));
+  const data = userDoc.data();
+
+  isAdmin = data.isAdmin === true;
+
+  if (isAdmin) {
+    document.getElementById("adminArea").classList.remove("hidden");
+  }
 });
 
+// 表示名
 document.getElementById("user").innerText =
   localStorage.getItem("name") + "（" + localStorage.getItem("xId") + "）";
 
@@ -59,7 +102,32 @@ window.logout = () => {
   location.href = "login.html";
 };
 
-// 商品取得
+// 商品登録
+window.createItem = async () => {
+  const name = document.getElementById("itemName").value;
+  const price = Number(document.getElementById("startPrice").value);
+  const unit = Number(document.getElementById("bidUnit").value);
+  const minutes = Number(document.getElementById("minutes").value);
+
+  if (!name || !price || !unit || !minutes) {
+    alert("全部入力して");
+    return;
+  }
+
+  const deadline = Date.now() + minutes * 60000;
+
+  await addDoc(collection(db, "items"), {
+    name: name,
+    currentPrice: price,
+    bidder: "",
+    bidUnit: unit,
+    deadline: deadline
+  });
+
+  alert("登録完了");
+};
+
+// 商品表示
 onSnapshot(collection(db, "items"), (snapshot) => {
   const itemsDiv = document.getElementById("items");
   itemsDiv.innerHTML = "";
@@ -89,6 +157,13 @@ onSnapshot(collection(db, "items"), (snapshot) => {
         入札
       </button>
 
+      ${isAdmin ? `
+        <button onclick="deleteItem('${id}')"
+          class="bg-red-500 text-white w-full mt-2 p-2 rounded">
+          削除
+        </button>
+      ` : ""}
+
     </div>
     `;
   });
@@ -117,12 +192,17 @@ window.bid = async (id, currentPrice, unit) => {
   });
 };
 
-// 残り時間更新
+// 削除（管理者のみ）
+window.deleteItem = async (id) => {
+  if (!confirm("削除する？")) return;
+  await deleteDoc(doc(db, "items", id));
+};
+
+// 残り時間
 setInterval(() => {
   document.querySelectorAll("[id^=time-]").forEach(el => {
     const deadline = Number(el.dataset.deadline);
-    const now = Date.now();
-    const diff = deadline - now;
+    const diff = deadline - Date.now();
 
     if (diff <= 0) {
       el.innerText = "終了";
