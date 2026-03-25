@@ -3,38 +3,39 @@
 <head>
   <meta charset="UTF-8">
   <title>ログイン / 新規登録</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 
-<body class="bg-gray-100 flex items-center justify-center h-screen">
+<body class="bg-gray-100 flex items-center justify-center min-h-screen px-4">
 
-<div class="bg-white p-6 rounded-xl shadow w-80">
+<div class="bg-white p-6 rounded-2xl shadow w-full max-w-md">
 
-  <h1 class="text-xl font-bold mb-4 text-center">ログイン / 新規登録</h1>
+  <h1 class="text-2xl font-bold mb-4 text-center">
+    ログイン / 新規登録
+  </h1>
 
-  <div id="error" class="text-red-500 mb-2 text-sm"></div>
+  <div id="error" class="text-red-500 mb-3 text-sm"></div>
 
-  <!-- 初回登録用 -->
-  <input id="name" placeholder="名前（＝X表示名・初回のみ）"
-    class="border p-2 w-full mb-2 rounded">
+  <input id="name" placeholder="名前（初回のみ）"
+    class="border p-3 w-full mb-3 rounded text-base">
 
-  <input id="xId" placeholder="XのID（@から・初回のみ）"
-    class="border p-2 w-full mb-2 rounded">
+  <input id="xId" placeholder="XのID（@から）"
+    class="border p-3 w-full mb-3 rounded text-base">
 
-  <!-- 共通 -->
   <input id="email" placeholder="メールアドレス"
-    class="border p-2 w-full mb-2 rounded">
+    class="border p-3 w-full mb-3 rounded text-base">
 
   <input id="password" type="password" placeholder="パスワード"
-    class="border p-2 w-full mb-3 rounded">
+    class="border p-3 w-full mb-4 rounded text-base">
 
   <button onclick="login()"
-    class="bg-blue-500 text-white w-full p-2 rounded mb-2">
+    class="bg-blue-500 text-white w-full p-3 rounded text-lg mb-2">
     ログイン
   </button>
 
   <button onclick="register()"
-    class="bg-green-500 text-white w-full p-2 rounded">
+    class="bg-green-500 text-white w-full p-3 rounded text-lg">
     新規登録
   </button>
 
@@ -69,7 +70,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// 🔵 ログイン
+// ログイン
 window.login = async () => {
   const email = document.getElementById("email").value;
   const pass = document.getElementById("password").value;
@@ -82,35 +83,23 @@ window.login = async () => {
     return;
   }
 
-  if (pass.length < 6) {
-    error.innerText = "パスワードは6文字以上にしてください";
-    return;
-  }
-
   try {
     const cred = await signInWithEmailAndPassword(auth, email, pass);
 
     const userDoc = await getDoc(doc(db, "users", cred.user.uid));
     const userData = userDoc.data();
 
-    // 名前だけ保持（表示用）
     localStorage.setItem("name", userData.name);
+    localStorage.setItem("xId", userData.xId);
 
     location.href = "index.html";
 
   } catch (e) {
-    if (e.code === "auth/user-not-found") {
-      error.innerText = "ユーザーが存在しません";
-    } else if (e.code === "auth/wrong-password" || e.code === "auth/invalid-credential") {
-      error.innerText = "パスワードが違います";
-    } else {
-      error.innerText = "ログイン失敗";
-      console.error(e);
-    }
+    error.innerText = "ログイン失敗";
   }
 };
 
-// 🟢 新規登録（初回のみ）
+// 新規登録
 window.register = async () => {
   const name = document.getElementById("name").value;
   const xId = document.getElementById("xId").value;
@@ -126,12 +115,12 @@ window.register = async () => {
   }
 
   if (!xId.startsWith("@")) {
-    error.innerText = "XのIDは@から入力してください";
+    error.innerText = "XのIDは@から入力";
     return;
   }
 
   if (pass.length < 6) {
-    error.innerText = "パスワードは6文字以上にしてください";
+    error.innerText = "パスワードは6文字以上";
     return;
   }
 
@@ -139,22 +128,18 @@ window.register = async () => {
     const cred = await createUserWithEmailAndPassword(auth, email, pass);
 
     await setDoc(doc(db, "users", cred.user.uid), {
-      name: name,   // ← X表示名
+      name: name,
       xId: xId,
       isAdmin: false
     });
 
     localStorage.setItem("name", name);
+    localStorage.setItem("xId", xId);
 
     location.href = "index.html";
 
   } catch (e) {
-    if (e.code === "auth/email-already-in-use") {
-      error.innerText = "このメールは既に登録されています";
-    } else {
-      error.innerText = "登録失敗";
-      console.error(e);
-    }
+    error.innerText = "登録失敗";
   }
 };
 </script>
