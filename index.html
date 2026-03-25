@@ -8,10 +8,8 @@
 
 <body class="bg-gray-100">
 
-<!-- ヘッダー -->
 <header class="bg-blue-600 text-white p-4 flex justify-between">
   <h1 class="text-xl font-bold">オークション</h1>
-
   <div>
     <span id="user"></span>
     <button onclick="logout()" class="ml-4 bg-white text-blue-600 px-2 py-1 rounded">
@@ -20,28 +18,22 @@
   </div>
 </header>
 
-<!-- 管理者エリア -->
+<!-- 管理者 -->
 <div id="adminArea" class="p-4 hidden">
   <div class="bg-white p-4 rounded-xl shadow mb-4">
-    <h2 class="text-lg font-bold mb-2">商品登録（管理者）</h2>
+    <h2 class="font-bold mb-2">商品登録</h2>
 
-    <input id="itemName" placeholder="商品名"
-      class="border p-2 w-full mb-2 rounded">
+    <input id="itemName" placeholder="商品名" class="border p-2 w-full mb-2">
+    <input id="itemPrice" type="number" placeholder="初期価格" class="border p-2 w-full mb-2">
+    <input id="bidUnit" type="number" placeholder="入札単位（例:100）" class="border p-2 w-full mb-2">
+    <input id="deadline" type="datetime-local" class="border p-2 w-full mb-2">
 
-    <input id="itemPrice" type="number" placeholder="初期価格"
-      class="border p-2 w-full mb-2 rounded">
-
-    <input id="deadline" type="datetime-local"
-      class="border p-2 w-full mb-2 rounded">
-
-    <button onclick="createItem()"
-      class="bg-blue-500 text-white w-full p-2 rounded">
+    <button onclick="createItem()" class="bg-blue-500 text-white w-full p-2">
       登録
     </button>
   </div>
 </div>
 
-<!-- 商品一覧 -->
 <main class="p-4">
   <div id="items" class="grid md:grid-cols-3 gap-4"></div>
 </main>
@@ -49,23 +41,15 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
-  getFirestore,
-  collection,
-  onSnapshot,
-  doc,
-  updateDoc,
-  addDoc,
-  deleteDoc,
-  getDoc
+  getFirestore, collection, onSnapshot, doc,
+  updateDoc, addDoc, deleteDoc, getDoc,
+  serverTimestamp, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 import {
-  getAuth,
-  onAuthStateChanged,
-  signOut
+  getAuth, onAuthStateChanged, signOut
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-// 🔴 Firebase設定
 const firebaseConfig = {
   apiKey: "AIzaSyDpd9FYMXGdJCBFXXTEHb2JkP6D9F0tp84",
   authDomain: "auction-be4d0.firebaseapp.com",
@@ -82,7 +66,6 @@ const auth = getAuth(app);
 
 let isAdmin = false;
 
-// 🔴 ログイン後にすべて開始
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     location.href = "login.html";
@@ -93,14 +76,12 @@ onAuthStateChanged(auth, async (user) => {
   const userData = userDoc.data();
 
   document.getElementById("user").innerText = userData.name;
-
   isAdmin = userData.isAdmin === true;
 
   if (isAdmin) {
     document.getElementById("adminArea").classList.remove("hidden");
   }
 
-  // 🔴 ここで商品読み込み（重要）
   loadItems();
 });
 
@@ -119,49 +100,40 @@ function loadItems() {
       const disabled = remain <= 0;
 
       div.innerHTML += `
-        <div class="bg-white rounded-2xl shadow p-4">
-          <h2 class="text-lg font-bold mb-2">${item.name}</h2>
+        <div class="bg-white p-4 rounded shadow">
+          <h2 class="font-bold">${item.name}</h2>
 
-          <p class="text-gray-600">現在価格</p>
-          <p class="text-2xl font-bold text-blue-600 mb-2">
-            ¥${item.currentPrice}
-          </p>
+          <p>現在価格: ¥${item.currentPrice}</p>
+          <p>入札者: ${item.bidder || "なし"}</p>
+          <p>単位: ¥${item.bidUnit}</p>
+          <p>残り: ${formatTime(remain)}</p>
 
-          <p class="text-sm text-gray-500">
-            入札者: ${item.bidder || "なし"}
-          </p>
-
-          <p class="text-sm mb-3">
-            残り: ${formatTime(remain)}
-          </p>
-
-          <input id="price-${id}"
-            type="number"
-            placeholder="入札額"
-            class="border p-2 w-full mb-2 rounded"
-            ${disabled ? "disabled" : ""}
-          />
+          <input id="price-${id}" type="number" class="border w-full mt-2"
+            ${disabled ? "disabled" : ""}>
 
           <button onclick="bid('${id}')"
-            class="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 disabled:bg-gray-400"
-            ${disabled ? "disabled" : ""}
-          >
+            class="bg-blue-500 text-white w-full mt-2"
+            ${disabled ? "disabled" : ""}>
             入札
           </button>
 
           ${isAdmin ? `
             <button onclick="deleteItem('${id}')"
-              class="w-full bg-red-500 text-white p-2 rounded mt-2">
+              class="bg-red-500 text-white w-full mt-2">
               削除
             </button>
           ` : ""}
+
+          <div id="bids-${id}" class="text-sm mt-2"></div>
         </div>
       `;
+
+      loadBids(id);
     });
   });
 }
 
-// 入札
+// 入札処理
 window.bid = async (id) => {
   const input = document.getElementById(`price-${id}`);
   const price = Number(input.value);
@@ -171,50 +143,89 @@ window.bid = async (id) => {
     return;
   }
 
+  const ref = doc(db, "items", id);
+  const snap = await getDoc(ref);
+  const item = snap.data();
+
+  // 🔴 条件①：現在価格より高い
+  if (price <= item.currentPrice) {
+    alert("現在価格より高くしてください");
+    return;
+  }
+
+  // 🔴 条件②：単位チェック
+  if ((price - item.currentPrice) % item.bidUnit !== 0) {
+    alert(`${item.bidUnit}円単位で入札してください`);
+    return;
+  }
+
   const user = auth.currentUser;
   const userDoc = await getDoc(doc(db, "users", user.uid));
   const name = userDoc.data().name;
-
-  const ref = doc(db, "items", id);
 
   await updateDoc(ref, {
     currentPrice: price,
     bidder: name
   });
 
+  await addDoc(collection(db, "items", id, "bids"), {
+    price,
+    name,
+    time: serverTimestamp()
+  });
+
   alert("入札成功！");
 };
 
-// 商品登録（管理者）
+// 履歴
+function loadBids(itemId) {
+  const q = query(
+    collection(db, "items", itemId, "bids"),
+    orderBy("time", "desc")
+  );
+
+  onSnapshot(q, (snapshot) => {
+    const div = document.getElementById(`bids-${itemId}`);
+    if (!div) return;
+
+    div.innerHTML = "<b>履歴</b><br>";
+
+    snapshot.forEach(doc => {
+      const b = doc.data();
+      div.innerHTML += `${b.name}: ¥${b.price}<br>`;
+    });
+  });
+}
+
+// 商品登録
 window.createItem = async () => {
   const name = document.getElementById("itemName").value;
   const price = Number(document.getElementById("itemPrice").value);
+  const bidUnit = Number(document.getElementById("bidUnit").value);
   const deadline = new Date(
     document.getElementById("deadline").value
   ).getTime();
 
-  if (!name || !price || !deadline) {
+  if (!name || !price || !bidUnit || !deadline) {
     alert("全部入力して");
     return;
   }
 
   await addDoc(collection(db, "items"), {
-    name: name,
+    name,
     currentPrice: price,
     bidder: "なし",
-    deadline: deadline
+    bidUnit,
+    deadline
   });
 
   alert("登録完了");
 };
 
-// 商品削除（管理者）
+// 削除
 window.deleteItem = async (id) => {
-  if (!confirm("本当に削除する？")) return;
-
+  if (!confirm("削除する？")) return;
   await deleteDoc(doc(db, "items", id));
-
-  alert("削除しました");
 };
 
 // ログアウト
@@ -223,7 +234,7 @@ window.logout = async () => {
   location.href = "login.html";
 };
 
-// 残り時間
+// 時間
 function formatTime(ms) {
   if (ms <= 0) return "終了";
 
