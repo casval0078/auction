@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="flex items-center justify-center h-screen bg-gray-100">
+
+<div class="bg-white p-6 rounded-xl shadow w-80">
+  <h2 class="text-xl font-bold mb-4">ログイン</h2>
+
+  <input id="email" placeholder="メール"
+    class="border p-2 w-full mb-2 rounded">
+
+  <input id="password" type="password" placeholder="パスワード"
+    class="border p-2 w-full mb-2 rounded">
+
+  <input id="name" placeholder="名前（初回のみ）"
+    class="border p-2 w-full mb-4 rounded">
+
+  <button onclick="login()"
+    class="bg-blue-500 text-white w-full p-2 rounded">
+    ログイン / 新規登録
+  </button>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+import {
+  getFirestore,
+  doc,
+  setDoc,
+  getDoc
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+// 🔴ここ絶対入れる
+const firebaseConfig = {
+  apiKey: "AIzaSyDpd9FYMXGdJCBFXXTEHb2JkP6D9F0tp84",
+  authDomain: "auction-be4d0.firebaseapp.com",
+  projectId: "auction-be4d0",
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// 既にログインしてたらスキップ
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    const docSnap = await getDoc(doc(db, "users", user.uid));
+    if (docSnap.exists()) {
+      localStorage.setItem("name", docSnap.data().name);
+      location.href = "index.html";
+    }
+  }
+});
+
+// ログイン処理
+window.login = async () => {
+  const email = document.getElementById("email").value;
+  const pass = document.getElementById("password").value;
+  const name = document.getElementById("name").value;
+
+  if (!email || !pass) {
+    alert("メールとパスワードを入力して");
+    return;
+  }
+
+  try {
+    // ログイン
+    const cred = await signInWithEmailAndPassword(auth, email, pass);
+
+    const docSnap = await getDoc(doc(db, "users", cred.user.uid));
+    localStorage.setItem("name", docSnap.data().name);
+
+  } catch (e) {
+    // 新規登録
+    if (!name) {
+      alert("初回は名前も入力して");
+      return;
+    }
+
+    const cred = await createUserWithEmailAndPassword(auth, email, pass);
+
+    await setDoc(doc(db, "users", cred.user.uid), {
+      name: name
+    });
+
+    localStorage.setItem("name", name);
+  }
+
+  location.href = "index.html";
+};
+</script>
+
+</body>
+</html>
