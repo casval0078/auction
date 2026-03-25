@@ -10,6 +10,8 @@
 <div class="bg-white p-6 rounded-xl shadow w-80">
   <h2 class="text-xl font-bold mb-4">ログイン</h2>
 
+<div id="error" class="text-red-500 mb-2"></div>
+  
   <input id="email" placeholder="メール"
     class="border p-2 w-full mb-2 rounded">
 
@@ -68,33 +70,62 @@ window.login = async () => {
   const email = document.getElementById("email").value;
   const pass = document.getElementById("password").value;
   const name = document.getElementById("name").value;
+  const error = document.getElementById("error");
+
+  // 🔴 エラーリセット
+  error.innerText = "";
 
   if (!email || !pass) {
-    alert("メールとパスワードを入力して");
+    error.innerText = "メールとパスワードを入力して";
+    return;
+  }
+
+  // 🔴 パスワード長チェック
+  if (pass.length < 6) {
+    error.innerText = "パスワードは6文字以上にしてください";
     return;
   }
 
   try {
-    // ログイン
+    // 🔵 ログイン
     const cred = await signInWithEmailAndPassword(auth, email, pass);
 
     const docSnap = await getDoc(doc(db, "users", cred.user.uid));
     localStorage.setItem("name", docSnap.data().name);
 
   } catch (e) {
-    // 新規登録
-    if (!name) {
-      alert("初回は名前も入力して");
+
+    // 🔴 ログイン失敗 → 原因分岐
+    if (e.code === "auth/user-not-found") {
+
+      // 🔵 新規登録
+      if (!name) {
+        error.innerText = "初回は名前も入力して";
+        return;
+      }
+
+      const cred = await createUserWithEmailAndPassword(auth, email, pass);
+
+      await setDoc(doc(db, "users", cred.user.uid), {
+        name: name,
+        isAdmin: false
+      });
+
+      localStorage.setItem("name", name);
+
+    } else if (e.code === "auth/wrong-password") {
+      error.innerText = "パスワードが違います";
+      return;
+
+    } else if (e.code === "auth/email-already-in-use") {
+      error.innerText = "このメールは既に登録されています";
+      return;
+
+    } else {
+      error.innerText = "エラーが発生しました";
+      console.error(e);
       return;
     }
-
-    const cred = await createUserWithEmailAndPassword(auth, email, pass);
-
-    await setDoc(doc(db, "users", cred.user.uid), {
-      name: name
-    });
-
-    localStorage.setItem("name", name);
   }
 
   location.href = "index.html";
