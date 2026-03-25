@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>オークション</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100">
+
+<!-- ヘッダー -->
+<header class="bg-blue-600 text-white p-4 flex justify-between">
+  <h1 class="text-xl font-bold">オークション</h1>
+  <div id="user">未ログイン</div>
+</header>
+
+<!-- コンテンツ -->
+<main class="p-4">
+  <div id="items" class="grid md:grid-cols-3 gap-4"></div>
+</main>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {
+  getFirestore,
+  collection,
+  onSnapshot,
+  doc,
+  updateDoc
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+import {
+  getAuth,
+  signInAnonymously,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+// Firebase設定
+const firebaseConfig = {
+  // ←ここに貼る
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth();
+
+// 匿名ログイン（簡易）
+signInAnonymously(auth);
+
+// ログイン状態
+onAuthStateChanged(auth, (user) => {
+  document.getElementById("user").innerText =
+    user ? "ログイン中" : "未ログイン";
+});
+
+// 商品表示（リアルタイム）
+onSnapshot(collection(db, "items"), (snapshot) => {
+  const div = document.getElementById("items");
+  div.innerHTML = "";
+
+  snapshot.forEach(docSnap => {
+    const item = docSnap.data();
+    const id = docSnap.id;
+
+    const now = Date.now();
+    const remain = item.deadline - now;
+    const disabled = remain <= 0;
+
+    div.innerHTML += `
+      <div class="bg-white rounded-2xl shadow p-4">
+        <h2 class="text-lg font-bold mb-2">${item.name}</h2>
+
+        <p class="text-gray-600">現在価格</p>
+        <p class="text-2xl font-bold text-blue-600 mb-2">
+          ¥${item.currentPrice}
+        </p>
+
+        <p class="text-sm text-gray-500">
+          入札者: ${item.bidder || "なし"}
+        </p>
+
+        <p class="text-sm mb-3">
+          残り: ${formatTime(remain)}
+        </p>
+
+        <input id="price-${id}"
+          type="number"
+          placeholder="入札額"
+          class="border p-2 w-full mb-2 rounded"
+          ${disabled ? "disabled" : ""}
+        />
+
+        <button onclick="bid('${id}')"
+          class="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 disabled:bg-gray-400"
+          ${disabled ? "disabled" : ""}
+        >
+          入札
+        </button>
+      </div>
+    `;
+  });
+});
+
+// 入札
+window.bid = async (id) => {
+  const input = document.getElementById(`price-${id}`);
+  const price = Number(input.value);
+
+  if (!price) return alert("金額を入力して");
+
+  const ref = doc(db, "items", id);
+
+  await updateDoc(ref, {
+    currentPrice: price,
+    bidder: "ユーザー"
+  });
+};
+
+// 時間フォーマット
+function formatTime(ms) {
+  if (ms <= 0) return "終了";
+
+  const sec = Math.floor(ms / 1000);
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+
+  return `${m}分 ${s}秒`;
+}
+</script>
+
+</body>
+</html>
