@@ -75,6 +75,7 @@ onAuthStateChanged(auth, async (user) => {
 
   const userDoc = await getDoc(doc(db, "users", user.uid));
   const userData = userDoc.data();
+  const displayName = `${userData.name}（${userData.xId}）`;
 
   document.getElementById("user").innerText =
     `${userData.name}（${userData.xId}）`;
