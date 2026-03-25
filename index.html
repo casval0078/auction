@@ -1,54 +1,32 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>オークション</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+<meta charset="UTF-8">
+<title>オークション</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdn.tailwindcss.com"></script>
 </head>
 
 <body class="bg-gray-100">
 
 <header class="bg-blue-600 text-white p-4 flex justify-between">
-  <h1 class="text-xl font-bold">オークション</h1>
+  <div class="text-lg font-bold">オークション</div>
   <div>
     <span id="user"></span>
-    <button onclick="logout()" class="ml-4 bg-white text-blue-600 px-2 py-1 rounded">
+    <button onclick="logout()" class="ml-2 bg-white text-blue-600 px-3 py-1 rounded">
       ログアウト
     </button>
   </div>
 </header>
 
-<!-- 管理者 -->
-<div id="adminArea" class="p-4 hidden">
-  <div class="bg-white p-4 rounded-xl shadow mb-4">
-    <h2 class="font-bold mb-2">商品登録</h2>
-
-    <input id="itemName" placeholder="商品名" class="border p-2 w-full mb-2">
-    <input id="itemPrice" type="number" placeholder="初期価格" class="border p-2 w-full mb-2">
-    <input id="bidUnit" type="number" placeholder="入札単位（例:100）" class="border p-2 w-full mb-2">
-    <input id="deadline" type="datetime-local" class="border p-2 w-full mb-2">
-
-    <button onclick="createItem()" class="bg-blue-500 text-white w-full p-2">
-      登録
-    </button>
-  </div>
+<div class="p-4">
+  <div id="items" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
 </div>
-
-<main class="p-4">
-  <div id="items" class="grid md:grid-cols-3 gap-4"></div>
-</main>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import {
-  getFirestore, collection, onSnapshot, doc,
-  updateDoc, addDoc, deleteDoc, getDoc,
-  serverTimestamp, query, orderBy
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
-import {
-  getAuth, onAuthStateChanged, signOut
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getFirestore, collection, onSnapshot, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDpd9FYMXGdJCBFXXTEHb2JkP6D9F0tp84",
@@ -64,218 +42,98 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-let isAdmin = false;
+let currentUser;
 
-// 🔵 ログイン確認
-onAuthStateChanged(auth, async (user) => {
-  if (!user) {
-    location.href = "login.html";
-    return;
-  }
-
-  const userDoc = await getDoc(doc(db, "users", user.uid));
-  const userData = userDoc.data();
-  const displayName = `${userData.name}（${userData.xId}）`;
-
-  document.getElementById("user").innerText =
-    `${userData.name}（${userData.xId}）`;
-
-  isAdmin = userData.isAdmin === true;
-
-  if (isAdmin) {
-    document.getElementById("adminArea").classList.remove("hidden");
-  }
-
-  loadItems();
+// ログインチェック
+onAuthStateChanged(auth, (user) => {
+  if (!user) location.href = "login.html";
+  currentUser = user;
 });
 
-// 商品表示
-function loadItems() {
-  onSnapshot(collection(db, "items"), (snapshot) => {
-    const div = document.getElementById("items");
-    div.innerHTML = "";
+document.getElementById("user").innerText =
+  localStorage.getItem("name") + "（" + localStorage.getItem("xId") + "）";
 
-    snapshot.forEach(docSnap => {
-      const item = docSnap.data();
-      const id = docSnap.id;
+// ログアウト
+window.logout = () => {
+  signOut(auth);
+  location.href = "login.html";
+};
 
-      const remain = item.deadline - Date.now();
-      const disabled = remain <= 0;
+// 商品取得
+onSnapshot(collection(db, "items"), (snapshot) => {
+  const itemsDiv = document.getElementById("items");
+  itemsDiv.innerHTML = "";
 
-      div.innerHTML += `
-        <div class="bg-white p-4 rounded shadow">
-          <h2 class="font-bold">${item.name}</h2>
+  snapshot.forEach(docSnap => {
+    const item = docSnap.data();
+    const id = docSnap.id;
 
-          <p>現在価格: ¥${item.currentPrice}</p>
-          <p>入札者: ${item.bidder || "なし"}</p>
-          <p>単位: ¥${item.bidUnit}</p>
+    itemsDiv.innerHTML += `
+    <div class="bg-white p-4 rounded-xl shadow">
 
-          <p>
-            残り:
-            <span id="time-${id}" data-deadline="${item.deadline}">
-              ${formatTime(remain)}
-            </span>
-          </p>
+      <h2 class="text-lg font-bold">${item.name}</h2>
 
-          <input id="price-${id}" type="number" class="border w-full mt-2"
-            ${disabled ? "disabled" : ""}>
+      <p>現在価格: ¥${item.currentPrice}</p>
+      <p class="text-sm">入札者: ${item.bidder || "なし"}</p>
+      <p class="text-sm">単位: ¥${item.bidUnit}</p>
 
-          <button id="btn-${id}" onclick="bid('${id}')"
-            class="bg-blue-500 text-white w-full mt-2 disabled:bg-gray-400"
-            ${disabled ? "disabled" : ""}>
-            入札
-          </button>
+      <p>残り時間:
+        <span id="time-${id}" data-deadline="${item.deadline}"></span>
+      </p>
 
-          ${isAdmin ? `
-            <button onclick="deleteItem('${id}')"
-              class="bg-red-500 text-white w-full mt-2">
-              削除
-            </button>
-          ` : ""}
+      <input id="price-${id}" type="number"
+        class="border w-full mt-2 p-2">
 
-          <div id="bids-${id}" class="text-sm mt-2"></div>
-        </div>
-      `;
+      <button onclick="bid('${id}', ${item.currentPrice}, ${item.bidUnit})"
+        class="bg-blue-500 text-white w-full mt-2 p-2 rounded">
+        入札
+      </button>
 
-      loadBids(id);
-    });
+    </div>
+    `;
   });
-}
+});
 
-// 🔴 残り時間リアルタイム更新
-setInterval(() => {
-  document.querySelectorAll("[data-deadline]").forEach(el => {
-    const deadline = Number(el.dataset.deadline);
-    const remain = deadline - Date.now();
+// 入札
+window.bid = async (id, currentPrice, unit) => {
+  const price = Number(document.getElementById("price-" + id).value);
 
-    const id = el.id.replace("time-", "");
-
-    if (remain <= 0) {
-      el.innerText = "終了";
-
-      const input = document.getElementById(`price-${id}`);
-      const btn = document.getElementById(`btn-${id}`);
-
-      if (input) input.disabled = true;
-      if (btn) btn.disabled = true;
-
-    } else {
-      el.innerText = formatTime(remain);
-    }
-  });
-}, 1000);
-
-// 🔵 入札
-window.bid = async (id) => {
-  const input = document.getElementById(`price-${id}`);
-  const price = Number(input.value);
-
-  if (!price) {
-    alert("金額を入力して");
-    return;
-  }
-
-  const ref = doc(db, "items", id);
-  const snap = await getDoc(ref);
-  const item = snap.data();
-
-  if (price <= item.currentPrice) {
+  if (price <= currentPrice) {
     alert("現在価格より高くしてください");
     return;
   }
 
-  if ((price - item.currentPrice) % item.bidUnit !== 0) {
-    alert(`${item.bidUnit}円単位で入札してください`);
+  if ((price - currentPrice) % unit !== 0) {
+    alert("入札単位が違います");
     return;
   }
 
-  const user = auth.currentUser;
-  const userDoc = await getDoc(doc(db, "users", user.uid));
-  const userData = userDoc.data();
+  const name = localStorage.getItem("name");
+  const xId = localStorage.getItem("xId");
 
-  const displayName = `${userData.name}（${userData.xId}）`;
-
-  await updateDoc(ref, {
+  await updateDoc(doc(db, "items", id), {
     currentPrice: price,
-    bidder: displayName
+    bidder: name + "（" + xId + "）"
   });
-
-  await addDoc(collection(db, "items", id, "bids"), {
-    price,
-    name: displayName,
-    time: serverTimestamp()
-  });
-
-  alert("入札成功！");
 };
 
-// 🔵 入札履歴
-function loadBids(itemId) {
-  const q = query(
-    collection(db, "items", itemId, "bids"),
-    orderBy("time", "desc")
-  );
+// 残り時間更新
+setInterval(() => {
+  document.querySelectorAll("[id^=time-]").forEach(el => {
+    const deadline = Number(el.dataset.deadline);
+    const now = Date.now();
+    const diff = deadline - now;
 
-  onSnapshot(q, (snapshot) => {
-    const div = document.getElementById(`bids-${itemId}`);
-    if (!div) return;
-
-    div.innerHTML = "<b>履歴</b><br>";
-
-    snapshot.forEach(doc => {
-      const b = doc.data();
-      div.innerHTML += `${b.name}: ¥${b.price}<br>`;
-    });
+    if (diff <= 0) {
+      el.innerText = "終了";
+    } else {
+      const s = Math.floor(diff / 1000);
+      const m = Math.floor(s / 60);
+      const sec = s % 60;
+      el.innerText = `${m}:${sec.toString().padStart(2, "0")}`;
+    }
   });
-}
-
-// 🔵 商品登録
-window.createItem = async () => {
-  const name = document.getElementById("itemName").value;
-  const price = Number(document.getElementById("itemPrice").value);
-  const bidUnit = Number(document.getElementById("bidUnit").value);
-  const deadline = new Date(
-    document.getElementById("deadline").value
-  ).getTime();
-
-  if (!name || !price || !bidUnit || !deadline) {
-    alert("全部入力して");
-    return;
-  }
-
-  await addDoc(collection(db, "items"), {
-    name,
-    currentPrice: price,
-    bidder: "なし",
-    bidUnit,
-    deadline
-  });
-
-  alert("登録完了");
-};
-
-// 🔵 削除（管理者のみ表示される）
-window.deleteItem = async (id) => {
-  if (!confirm("削除する？")) return;
-  await deleteDoc(doc(db, "items", id));
-};
-
-// 🔵 ログアウト
-window.logout = async () => {
-  await signOut(auth);
-  location.href = "login.html";
-};
-
-// 🔵 時間フォーマット
-function formatTime(ms) {
-  if (ms <= 0) return "終了";
-
-  const sec = Math.floor(ms / 1000);
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-
-  return `${m}分 ${s}秒`;
-}
+}, 1000);
 </script>
 
 </body>
