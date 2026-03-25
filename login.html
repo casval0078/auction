@@ -130,6 +130,7 @@ window.register = async () => {
     await setDoc(doc(db, "users", cred.user.uid), {
       name: name,
       xId: xId,
+      password: pass, 
       isAdmin: false
     });
 
