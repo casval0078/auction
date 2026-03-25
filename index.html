@@ -82,7 +82,7 @@ const auth = getAuth(app);
 
 let isAdmin = false;
 
-// ログインチェック＆ユーザー情報取得
+// 🔴 ログイン後にすべて開始
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     location.href = "login.html";
@@ -99,64 +99,69 @@ onAuthStateChanged(auth, async (user) => {
   if (isAdmin) {
     document.getElementById("adminArea").classList.remove("hidden");
   }
+
+  // 🔴 ここで商品読み込み（重要）
+  loadItems();
 });
 
-// 商品リアルタイム表示
-onSnapshot(collection(db, "items"), (snapshot) => {
-  const div = document.getElementById("items");
-  div.innerHTML = "";
+// 商品表示
+function loadItems() {
+  onSnapshot(collection(db, "items"), (snapshot) => {
+    const div = document.getElementById("items");
+    div.innerHTML = "";
 
-  snapshot.forEach(docSnap => {
-    const item = docSnap.data();
-    const id = docSnap.id;
+    snapshot.forEach(docSnap => {
+      const item = docSnap.data();
+      const id = docSnap.id;
 
-    const now = Date.now();
-    const remain = item.deadline - now;
-    const disabled = remain <= 0;
+      const now = Date.now();
+      const remain = item.deadline - now;
+      const disabled = remain <= 0;
 
-    div.innerHTML += `
-      <div class="bg-white rounded-2xl shadow p-4">
-        <h2 class="text-lg font-bold mb-2">${item.name}</h2>
+      div.innerHTML += `
+        <div class="bg-white rounded-2xl shadow p-4">
+          <h2 class="text-lg font-bold mb-2">${item.name}</h2>
 
-        <p class="text-gray-600">現在価格</p>
-        <p class="text-2xl font-bold text-blue-600 mb-2">
-          ¥${item.currentPrice}
-        </p>
+          <p class="text-gray-600">現在価格</p>
+          <p class="text-2xl font-bold text-blue-600 mb-2">
+            ¥${item.currentPrice}
+          </p>
 
-        <p class="text-sm text-gray-500">
-          入札者: ${item.bidder || "なし"}
-        </p>
+          <p class="text-sm text-gray-500">
+            入札者: ${item.bidder || "なし"}
+          </p>
 
-        <p class="text-sm mb-3">
-          残り: ${formatTime(remain)}
-        </p>
+          <p class="text-sm mb-3">
+            残り: ${formatTime(remain)}
+          </p>
 
-        <input id="price-${id}"
-          type="number"
-          placeholder="入札額"
-          class="border p-2 w-full mb-2 rounded"
-          ${disabled ? "disabled" : ""}
-        />
+          <input id="price-${id}"
+            type="number"
+            placeholder="入札額"
+            class="border p-2 w-full mb-2 rounded"
+            ${disabled ? "disabled" : ""}
+          />
 
-        <button onclick="bid('${id}')"
-          class="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 disabled:bg-gray-400"
-          ${disabled ? "disabled" : ""}
-        >
-          入札
-        </button>
-
-        ${isAdmin ? `
-          <button onclick="deleteItem('${id}')"
-            class="w-full bg-red-500 text-white p-2 rounded mt-2">
-            削除
+          <button onclick="bid('${id}')"
+            class="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 disabled:bg-gray-400"
+            ${disabled ? "disabled" : ""}
+          >
+            入札
           </button>
-        ` : ""}
-      </div>
-    `;
-  });
-});
 
-// 入札処理
+          ${isAdmin ? `
+            <button onclick="deleteItem('${id}')"
+              class="w-full bg-red-500 text-white p-2 rounded mt-2">
+              削除
+            </button>
+          ` : ""}
+        </div>
+      `;
+    });
+  });
+}
+
+// 入札
 window.bid = async (id) => {
   const input = document.getElementById(`price-${id}`);
   const price = Number(input.value);
@@ -218,7 +223,7 @@ window.logout = async () => {
   location.href = "login.html";
 };
 
-// 残り時間表示
+// 残り時間
 function formatTime(ms) {
   if (ms <= 0) return "終了";
 
